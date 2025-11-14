@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Oscilador Forzado Amortiguado — v1.4 (Mejorado)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  /* ===== Estilos generales (Mejorados) ===== */
+  body { 
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+    margin: 18px; 
+    background: #f9f9f9; 
+    color: #222; 
+    line-height: 1.4;
+  }
+  h1,h2{ text-align:center; margin:10px 0 12px 0; }
+  #ui { 
+    display:flex; 
+    flex-wrap:wrap; 
+    gap:15px; 
+    justify-content:center; 
+    align-items:center; 
+    margin-bottom:12px;
+    padding: 10px;
+    background: #fff;
+    border: 1px solid #eee;
+    border-radius: 8px;
+  }
+  .control { display:flex; flex-direction:column; font-size:13px; align-items:center; }
+  .control label{ margin-bottom:6px; font-weight: 500; }
+  input[type=range]{ width:180px; }
+  button{ 
+    padding: 7px 12px; 
+    margin: 4px; 
+    border: none; 
+    border-radius: 5px; 
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.2s;
+  }
+  small{ color:#555; display:block; text-align:center; margin-top:8px; font-size: 13px; }
+
+  /* Colores de botones mejorados */
+  #rigidezBtn   { background:#d4edda; color:#155724; border: 1px solid #c3e6cb; }
+  #resonanciaBtn{ background:#cce5ff; color:#004085; border: 1px solid #b8daff; }
+  #masaBtn      { background:#f8d7da; color:#721c24; border: 1px solid #f5c6cb; }
+  #play         { background: #28a745; color: white; }
+  #pause        { background: #ffc107; color: #212529; }
+  #reset        { background: #dc3545; color: white; }
+  button:hover { opacity: 0.85; }
+
+  /* ===== Panels y canvas ===== */
+  #plots{ display:flex; flex-direction:column; gap:10px; align-items:center; }
+  canvas{ border:1px solid #ddd; background:#fafafa; max-width:100%; display:block; border-radius: 4px; }
+
+  /* ===== Ventana educativa flotante (Más legible) ===== */
+  #eduBox {
+    position: fixed;
+    top: 18px; right: 18px;
+    width: 340px; max-width:90vw;
+    padding: 15px; /* Más padding */
+    background: rgba(255,255,255,0.97);
+    border: 2px solid #006bb3;
+    border-radius:8px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.15);
+    z-index: 999;
+    cursor: move;
+    font-size: 14px; /* Fuente más grande */
+    line-height: 1.45; /* Más espaciado */
+  }
+  #eduTitle { font-weight:700; color:#004a80; margin-bottom:8px; text-align:center; font-size: 15px; }
+  #eduBody { /* hereda line-height */ }
+  #tips { margin-top:10px; background:#f6f9fc; border:1px solid #e1eef8; padding:10px; border-radius:6px; font-size:13px; }
+  #fasorCanvas { display:block; width:100%; height:160px; border:1px solid #e0e0e0; margin-top:8px; background:#fff; }
+
+  /* ===== Legenda small (Simplificada) ===== */
+  .legendItem{ display:flex; align-items:center; gap:8px; margin-top:6px; }
+  .swatch{ width:14px; height:14px; border-radius:3px; display:inline-block; border:1px solid #ccc; }
+
+  /* Responsive: eduBox reduce en mobiles */
+  @media (max-width:600px){
+    #eduBox{ width: 92vw; left:4vw; right:4vw; top:12px; position: relative; margin-bottom: 15px;}
+  }
+</style>
+</head>
+<body>
+
+<h1>Oscilador Forzado Amortiguado — v1.4</h1>
+<p style="text-align:center;">Interactividad didáctica: mové parámetros y seguí las instrucciones en la ventana educativa. Probaremos Rigidez, Resonancia y Masa.</p>
+
+<div id="ui">
+  <div class="control">
+    <label>m [kg] — <span id="vm">1.00</span></label>
+    <input id="m" type="range" min="0.1" max="5" step="0.01" value="1">
+  </div>
+  <div class="control">
+    <label>k [N/m] — <span id="vk">1000</span></label>
+    <input id="k" type="range" min="50" max="5000" step="1" value="1000">
+  </div>
+  <div class="control">
+    <label>Rₘ [N·s/m] — <span id="vr">5.00</span></label>
+    <input id="r" type="range" min="0" max="50" step="0.1" value="5">
+  </div>
+  <div class="control">
+    <label>F₀ [N] — <span id="vf">1.00</span></label>
+    <input id="f0" type="range" min="0" max="5" step="0.01" value="1">
+  </div>
+  <div class="control">
+    <label>ω (rad/s) — <span id="vomega">60.00</span></label>
+    <input id="omega" type="range" min="1" max="200" step="0.1" value="60">
+  </div>
+</div>
+
+<div style="text-align:center; margin-bottom:6px;">
+  <button id="rigidezBtn">Control por Rigidez</button>
+  <button id="resonanciaBtn">Resonancia</button>
+  <button id="masaBtn">Control por Masa</button>
+  &nbsp;&nbsp;
+  <button id="play">Play</button>
+  <button id="pause">Pausa</button>
+  <button id="reset">Reset</button>
+</div>
+
+<small>Nota: ω₀ = √(k/m). Probá ω/ω₀ ≈ 0.2, 1, 3. Subí o bajá Rₘ para ver el efecto en Q y ancho de banda.</small>
+
+<div id="plots">
+  <div style="width:90%; max-width:900px;">
+    <h2 style="margin-bottom:6px;">Animación — masa y resorte</h2>
+    <canvas id="anim" width="860" height="220"></canvas>
+    <small style="display:block; text-align:left; margin-top:6px;">Flecha roja: fuerza instantánea F(t) (empuja/jala). Bloque coloreado: intensidad de la fuerza. El resorte intenta transmitir esa fuerza a la masa.</small>
+  </div>
+
+  <div style="width:90%; max-width:900px;">
+    <h2 style="margin-bottom:6px;">x(t) — desplazamiento (m)</h2>
+    <canvas id="plot" width="860" height="220"></canvas>
+    <small style="display:block; text-align:left; margin-top:6px;">Eje horizontal: tiempo (s). Eje vertical: desplazamiento (m).</small>
+  </div>
+</div>
+
+<div id="eduBox" title="Arrastrame">
+  <div id="eduTitle"><span id="eduHeading">Explicación en tiempo real</span></div>
+  <div id="eduBody">
+    <div id="eduSummary" style="font-size:13px; margin-bottom:6px;"></div>
+
+    <div id="tips"></div>
+
+    <canvas id="fasorCanvas" width="300" height="160"></canvas>
+
+    <div class="legendItem"><span class="swatch" style="background:#e91e63;"></span><small>F(t) — fuerza (roja)</small></div>
+    <div class="legendItem"><span class="swatch" style="background:#1565c0;"></span><small>x(t) — desplazamiento (azul)</small></div>
+  </div>
+</div>
+
+<script>
+/* ===========================================================
+   v1.4 - Mejoras de diseño y corrección de superposiciones.
+   - Colores de botones mejorados.
+   - Textos en canvas reubicados para evitar solapamiento.
+   - Fasor y leyenda simplificados.
+   - CORRECCIÓN: Ángulo fasorial de x(t) corregido físicamente.
+   =========================================================== */
+
+/* ---------- 1) Referencias DOM y valores iniciales ---------- */
+const m_s = document.getElementById('m'), k_s = document.getElementById('k'),
+      r_s = document.getElementById('r'), f0_s = document.getElementById('f0'),
+      omega_s = document.getElementById('omega');
+
+const vm = document.getElementById('vm'), vk = document.getElementById('vk'),
+      vr = document.getElementById('vr'), vf = document.getElementById('vf'),
+      vomega = document.getElementById('vomega');
+
+const playB = document.getElementById('play'), pauseB = document.getElementById('pause'), resetB = document.getElementById('reset');
+const rigidezB = document.getElementById('rigidezBtn'), resonB = document.getElementById('resonanciaBtn'), masaB = document.getElementById('masaBtn');
+
+const anim = document.getElementById('anim'), ctx = anim.getContext('2d');
+const plot = document.getElementById('plot'), pctx = plot.getContext('2d');
+const fasorCanvas = document.getElementById('fasorCanvas'), fctx = fasorCanvas.getContext('2d');
+
+const eduSummary = document.getElementById('eduSummary'), tipsDiv = document.getElementById('tips'), eduHeading = document.getElementById('eduHeading');
+
+let m = 1.0, k = 1000.0, Rm = 5.0, F0 = 1.0, omega = 60.0;
+vm.textContent = m.toFixed(2); vk.textContent = k; vr.textContent = Rm.toFixed(2); vf.textContent = F0.toFixed(2); vomega.textContent = omega.toFixed(2);
+
+/* Dinámica del sistema */
+let x = 0.0, v = 0.0, t = 0.0;
+let dt = 0.002;        // paso de integración
+let running = false;
+let dataX = [], dataT = [];
+const Tdisplay = 6.0;         // segundos visibles en la gráfica
+
+/* ---------- 2) Actualización de controles ---------- */
+function updateVals(){
+  m = +m_s.value; k = +k_s.value; Rm = +r_s.value; F0 = +f0_s.value; omega = +omega_s.value;
+  vm.textContent = m.toFixed(2); vk.textContent = k; vr.textContent = Rm.toFixed(2);
+  vf.textContent = F0.toFixed(2); vomega.textContent = omega.toFixed(2);
+  updateExplanation();
+}
+[m_s,k_s,r_s,f0_s,omega_s].forEach(el => el.addEventListener('input', updateVals));
+
+/* ---------- 3) Escenarios ---------- */
+function setScenario(type){
+  const omega0 = Math.sqrt(k/m);
+  if(type==='rigidez'){ omega = 0.2*omega0; omega_s.value = omega; }
+  if(type==='resonancia'){ omega = omega0; omega_s.value = omega; }
+  if(type==='masa'){ omega = 3*omega0; omega_s.value = omega; }
+  updateVals();
+}
+rigidezB.onclick = ()=> setScenario('rigidez');
+resonB.onclick = ()=> setScenario('resonancia');
+masaB.onclick = ()=> setScenario('masa');
+
+/* ---------- 4) Integrador RK4 (m x'' + Rm x' + k x = F0 cos(ω t)) ---------- */
+function derivs(tt, xx, vv){
+  const F = F0 * Math.cos(omega * tt);
+  return (F - Rm*vv - k*xx) / m;
+}
+function rk4_step(){
+  const h = dt;
+  const x0 = x, v0 = v, t0 = t;
+  const a1 = derivs(t0, x0, v0);
+  const x2 = x0 + 0.5*h*v0, v2 = v0 + 0.5*h*a1, a2 = derivs(t0+0.5*h, x2, v2);
+  const x3 = x0 + 0.5*h*v2, v3 = v0 + 0.5*h*a2, a3 = derivs(t0+0.5*h, x3, v3);
+  const x4 = x0 + h*v3, v4 = v0 + h*a3, a4 = derivs(t0+h, x4, v4);
+  x += (h/6)*(v0 + 2*v2 + 2*v3 + v4);
+  v += (h/6)*(a1 + 2*a2 + 2*a3 + a4);
+  t += h;
+}
+
+/* ---------- 5) Dibujo animación (mejor resorte + fuerza clara) ---------- */
+function drawSpring(baseX, baseY, endX, amp=12, coils=12){
+  // Mejor dibujo de resorte (zigzag con arcos)
+  ctx.beginPath();
+  ctx.moveTo(baseX, baseY);
+  const L = endX - baseX - 20;
+  for(let i=0;i<coils;i++){
+    const xi = baseX + 10 + (i+1)/coils * L;
+    const yi = baseY + ((i%2===0)? -amp : amp);
+    ctx.lineTo(xi, yi);
+  }
+  ctx.lineTo(endX-20, baseY);
+  ctx.stroke();
+}
+
+function drawAnim(){
+  const W = anim.width, H = anim.height;
+  ctx.clearRect(0,0,W,H);
+
+  // parámetros visuales
+  const baseX = 90, baseY = H/2;
+  const scale = 40;        // px por metro
+  const xp = baseX + x*scale;
+
+  // dibujar pared izquierda
+  ctx.fillStyle = '#444';
+  ctx.fillRect(10, baseY-40, 20, 80);
+
+  // resorte
+  ctx.lineWidth = 2; ctx.strokeStyle = '#666';
+  drawSpring(baseX, baseY, xp);
+
+  // dibujar masa (bloque)
+  const Finst = F0 * Math.cos(omega * t);
+  const intensity = Math.min(1, Math.abs(Finst)/Math.max(0.0001, F0));
+  ctx.fillStyle = `rgba(33,150,243,${0.5 + 0.5*intensity})`;
+  ctx.fillRect(xp-20, baseY-20, 40, 40);
+  ctx.strokeStyle = '#0b63a4'; ctx.lineWidth = 1.5; ctx.strokeRect(xp-20, baseY-20, 40, 40);
+
+  // flecha de fuerza (más intuitiva: flecha con cabeza, cambia color segun signo)
+  const arrowMax = 50;
+  const arrowLen = Math.max(-1, Math.min(1, Finst / Math.max(0.0001,F0))) * arrowMax;
+
+  // draw arrow body and head manually (compatible)
+  ctx.beginPath();
+  // body
+  ctx.moveTo(xp+30, baseY);
+  ctx.lineTo(xp+30+arrowLen, baseY); 
+  ctx.strokeStyle = (Finst>=0)? '#e91e63' : '#9c27b0'; // red for push, purple for pull
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+  // head
+  const headDir = (arrowLen>=0)? 1 : -1;
+  const hx = xp+30+arrowLen, hy = baseY;
+  ctx.beginPath();
+  ctx.moveTo(hx, hy);
+  ctx.lineTo(hx - 8*headDir, hy - 6);
+  ctx.lineTo(hx - 8*headDir, hy + 6);
+  ctx.fillStyle = (Finst>=0)? '#e91e63' : '#9c27b0';
+  ctx.fill();
+
+  // === MEJORA: Textos informativos reubicados para no superponer ===
+  ctx.fillStyle = '#222';
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('ω / ω₀ = ' + (Math.sqrt(k/m) / omega).toFixed(2), 10, 20); // Arriba a la izquierda
+
+  ctx.textAlign = 'right'; // Arriba a la derecha
+  ctx.fillText('x (m) = ' + x.toFixed(4), W - 20, 20);
+  ctx.fillText('t = ' + t.toFixed(2) + ' s', W - 20, 38);
+  ctx.textAlign = 'left'; // Reset
+}
+
+/* ---------- 6) Dibujo gráfica x(t) con ejes ---------- */
+function drawAxes(W, H, marginLeft=48, marginRight=12, marginTop=10, marginBottom=36){
+  // fondo y ejes principales
+  pctx.fillStyle = '#fff'; pctx.fillRect(0,0,W,H);
+  pctx.strokeStyle = '#ddd'; pctx.lineWidth = 1;
+  pctx.strokeRect(marginLeft, marginTop, W - marginLeft - marginRight, H - marginTop - marginBottom);
+
+  // etiquetas ejes
+  pctx.fillStyle = '#333'; pctx.font = '12px sans-serif';
+  pctx.textAlign = 'center'; // MEJORA
+  pctx.fillText('Tiempo (s)', W/2, H - 8); // Centrado
+  pctx.save();
+  pctx.translate(15, H/2 + 30); // Ajustado
+  pctx.rotate(-Math.PI/2);
+  pctx.fillText('Desplazamiento x (m)', 0, 0);
+  pctx.restore();
+  pctx.textAlign = 'left'; // Reset
+}
+
+function drawPlot(){
+  const W = plot.width, H = plot.height;
+  const marginLeft = 48, marginRight = 12, marginTop = 10, marginBottom = 36; // Márgenes originales
+  drawAxes(W, H, marginLeft, marginRight, marginTop, marginBottom);
+  
+  // mantener ventana de tiempo
+  while(dataT.length && (dataT[dataT.length-1] - dataT[0]) > Tdisplay){ dataT.shift(); dataX.shift(); }
+  if(dataT.length < 2) return;
+
+  const plotW = W - marginLeft - marginRight, plotH = H - marginTop - marginBottom;
+  const t0 = dataT[0], t1 = dataT[dataT.length-1], dtplot = Math.max(1e-6, t1 - t0);
+
+  // determinar escala vertical
+  let maxAbs = 0; for(const v of dataX) maxAbs = Math.max(maxAbs, Math.abs(v));
+  const amp = Math.max(1e-3, maxAbs);
+
+  // dibujar grid horizontal y ticks
+  pctx.strokeStyle = '#f1f1f1'; pctx.lineWidth = 1;
+  pctx.fillStyle = '#666'; pctx.font = '11px sans-serif';
+  pctx.textAlign = 'right'; // MEJORA: Alinear a la derecha
+  const nH = 6;
+  for(let i=0;i<=nH;i++){
+    const y = marginTop + i*(plotH/nH);
+    pctx.beginPath(); pctx.moveTo(marginLeft, y); pctx.lineTo(marginLeft+plotW, y); pctx.stroke();
+    // tick label
+    const val = ((nH/2)-i)*(amp/(nH/2));
+    pctx.fillText(val.toFixed(3), marginLeft - 8, y+4); // MEJORA: 8px de padding
+  }
+  pctx.textAlign = 'left'; // Reset
+
+  // dibujar la curva
+  pctx.beginPath();
+  for(let i=0;i<dataX.length;i++){
+    const sx = marginLeft + ((dataT[i]-t0)/dtplot)*plotW;
+    const sy = marginTop + plotH/2 - (dataX[i]/amp)*(plotH/2)*0.9;
+    if(i===0) pctx.moveTo(sx, sy); else pctx.lineTo(sx, sy);
+  }
+  pctx.strokeStyle = '#1565c0'; pctx.lineWidth = 2; pctx.stroke();
+
+  // ejes time ticks: 5 ticks
+  pctx.fillStyle = '#333'; pctx.font = '11px sans-serif';
+  pctx.textAlign = 'center'; // MEJORA: Centrar ticks del eje X
+  for(let j=0;j<=5;j++){
+    const tt = t0 + j*(dtplot/5);
+    const sx = marginLeft + (j/5)*plotW;
+    pctx.fillText(tt.toFixed(2), sx, H - 18); // Centrado
+  }
+  pctx.textAlign = 'left'; // Reset
+}
+
+/* ---------- 7) Fasor (Corregido físicamente) ---------- */
+function drawFasor(){
+  const W = fasorCanvas.width, H = fasorCanvas.height;
+  fctx.clearRect(0,0,W,H);
+  // centro y radio
+  const cx = W/2, cy = H/2, R = 50;
+
+  // ángulo instantáneo de la fuerza (gira con ωt)
+  const phiF = omega * t;        // ángulo de F(t)
+  // desfase de la velocidad: theta = atan2(Im(Zm), Re(Zm))
+  const react = omega * m - k / omega;
+  const theta = Math.atan2(react, Rm);
+
+  // CORRECCIÓN: El desfase del desplazamiento x respecto a F es: -theta - π/2
+  const phix = phiF - theta - Math.PI/2;
+
+  // dibujar círculo guía
+  fctx.strokeStyle = '#e8e8e8'; fctx.lineWidth = 1;
+  fctx.beginPath(); fctx.arc(cx, cy, R+6, 0, Math.PI*2); fctx.stroke();
+
+  // dibujar F(t) vector (rojo)
+  const Fx = cx + R * Math.cos(phiF);
+  const Fy = cy - R * Math.sin(phiF);
+  fctx.beginPath(); fctx.moveTo(cx,cy); fctx.lineTo(Fx,Fy);
+  fctx.strokeStyle = '#e91e63'; fctx.lineWidth = 3; fctx.stroke();
+  // cabeza flecha F
+  fctx.beginPath();
+  const hdx = 8 * Math.cos(phiF - Math.PI/6);
+  const hdy = -8 * Math.sin(phiF - Math.PI/6);
+  fctx.moveTo(Fx, Fy);
+  fctx.lineTo(Fx - hdx, Fy - hdy);
+  fctx.lineTo(Fx - 8*Math.cos(phiF + Math.PI/6), Fy + 8*Math.sin(phiF + Math.PI/6));
+  fctx.fillStyle = '#e91e63';
+  fctx.fill();
+
+  // dibujar x(t) vector (azul) con la fase corregida
+  const xx = cx + R * Math.cos(phix);
+  const xy = cy - R * Math.sin(phix);
+  fctx.beginPath(); fctx.moveTo(cx,cy); fctx.lineTo(xx,xy);
+  fctx.strokeStyle = '#1565c0'; fctx.lineWidth = 3; fctx.stroke();
+  // cabeza flecha x
+  fctx.beginPath();
+  fctx.moveTo(xx,xy);
+  fctx.lineTo(xx - 8*Math.cos(phix - Math.PI/6), xy + 8*Math.sin(phix - Math.PI/6));
+  fctx.lineTo(xx - 8*Math.cos(phix + Math.PI/6), xy + 8*Math.sin(phix + Math.PI/6));
+  fctx.fillStyle = '#1565c0';
+  fctx.fill();
+  
+  // === MEJORA: Texto reubicado y simplificado ===
+  fctx.fillStyle = '#222'; fctx.font = '12px sans-serif';
+  fctx.textAlign = 'left';
+  // Mostrar el desfase correcto entre F y x (en grados)
+  const phaseDiff = -theta - Math.PI/2;
+  fctx.fillText('Desfase ≈ ' + (phaseDiff*180/Math.PI).toFixed(0) + '°', 8, 14);
+
+  // Etiquetas para los vectores (lejos del centro)
+  fctx.fillStyle = '#e91e63';
+  fctx.fillText('F(t)', cx+R+15, cy - 8);
+  fctx.fillStyle = '#1565c0';
+  fctx.fillText('x(t)', cx+R+15, cy + 12);
+  
+  // dibujar sentido de rotación como flecha pequeña
+  fctx.beginPath();
+  fctx.strokeStyle = '#666'; fctx.lineWidth = 1;
+  fctx.arc(cx, cy, R+16, -Math.PI/3, -Math.PI/3 + 0.9, false);
+  fctx.stroke();
+  fctx.fillStyle = '#666';
+  fctx.beginPath();
+  const arx = cx + (R+16)*Math.cos(-Math.PI/3 + 0.9);
+  const ary = cy - (R+16)*Math.sin(-Math.PI/3 + 0.9);
+  fctx.moveTo(arx, ary);
+  fctx.lineTo(arx - 6, ary + 3);
+  fctx.lineTo(arx - 2, ary - 6);
+  fctx.fill();
+}
+
+/* ---------- 8) Explicación dinámica y tips (eduBox) ---------- */
+function updateExplanation(){
+  const omega0 = Math.sqrt(k/m);
+  const ratio = omega / omega0;
+  let regimeText, tipsHtml;
+
+  if(ratio < 0.7){
+    eduHeading.textContent = 'Control por Rigidez';
+    regimeText = 'Dominio: rigidez (−k/ω). A bajas frecuencias la masa sigue la fuerza; x(t) está casi en fase con F(t).';
+    tipsHtml = '<b>Prueba:</b> Aumentá F₀ para ver cómo escala x. Reducí k para ver aumento de amplitud. Subí ω para acercarte a resonancia.';
+  } else if(ratio < 1.4){
+    eduHeading.textContent = 'Resonancia';
+    regimeText = 'Dominio: resistencia (Rₘ) en el punto donde las reactancias se anulan. La velocidad está en fase con F; máxima transferencia de potencia.';
+    tipsHtml = '<b>Prueba:</b> Bajá Rₘ para aumentar Q (pico más alto y estrecho). Subí Rₘ para amortiguar la resonancia (pico bajo y ancho).';
+  } else {
+    eduHeading.textContent = 'Control por Masa';
+    regimeText = 'Dominio: inercia (+ωm). A altas frecuencias la masa no puede seguir; x(t) es pequeña y fuertemente desfasada.';
+    tipsHtml = '<b>Prueba:</b> Aumentá m para ver cómo baja ω₀ y desplaza la región de resonancia; bajá Rₘ para ver menor amortiguamiento en altas frecuencias.';
+  }
+
+  // consejos generales útiles
+  const generalTips = '<div style="margin-top:6px;"><b>Consejos de observación:</b><ul style="margin:6px 0 0 16px;"><li>Para ver Q: bajar Rₘ y observar altura/ancho del pico (usá el botón Resonancia y luego gráfica en v1.4).</li><li>Para ver desfase: mirá el fasor. F(t) (rojo) gira con ωt; x(t) (azul) está retrasado por θ.</li></ul></div>';
+
+  eduSummary.innerHTML = '<b>' + eduHeading.textContent + '</b><br>' + regimeText;
+  tipsDiv.innerHTML = tipsHtml + generalTips;
+}
+
+/* ---------- 9) Loop y dibujo general ---------- */
+function step(){
+  // integración y almacenamiento
+  rk4_step();
+  dataT.push(t); dataX.push(x);
+  if(dataT.length > 5000){ dataT.shift(); dataX.shift(); }
+}
+
+function drawAll(){
+  drawAnim();
+  drawPlot();
+  drawFasor();
+  updateExplanation();
+}
+
+function loop(){
+  if(running){
+    // integrar varias sub-steps para estabilidad visual
+    for(let i=0;i<4;i++) step();
+  }
+  drawAll();
+  requestAnimationFrame(loop);
+}
+loop(); // iniciar bucle
+
+/* ---------- 10) Botones ---------- */
+playB.onclick = ()=> { running = true; };
+pauseB.onclick = ()=> { running = false; };
+resetB.onclick = ()=> { running = false; x = 0; v = 0; t = 0; dataX = []; dataT = []; };
+
+/* ---------- 11) Ventana eduBox movible (drag) ---------- */
+const eduBox = document.getElementById('eduBox');
+let dragging = false, offsetX = 0, offsetY = 0;
+eduBox.addEventListener('mousedown', (e)=> { dragging = true; offsetX = e.offsetX; offsetY = e.offsetY; });
+window.addEventListener('mouseup', ()=> { dragging = false; });
+window.addEventListener('mousemove', (e)=> {
+  if(dragging){
+    const left = e.pageX - offsetX;
+    const top = e.pageY - offsetY;
+    eduBox.style.left = Math.max(4, left) + 'px';
+    eduBox.style.top = Math.max(4, top) + 'px';
+    eduBox.style.right = 'auto'; // Permite mover libremente
+  }
+});
+
+/* ---------- 12) Inicio: set valores y explicación ---------- */
+updateVals();
+updateExplanation();
+
+</script>
+</body>
+</html>
